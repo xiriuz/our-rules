@@ -159,10 +159,46 @@ class _RequestCardState extends State<_RequestCard> {
     if (mounted) setState(() => _processing = false);
   }
 
+  Future<void> _cancel() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('승인 취소 요청'),
+        content: Text('"${widget.request.ruleTitle}" 승인 취소를 요청하면 다른 가족의 승인 후 점수가 되돌아가요. 요청할까요?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('아니요'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('요청하기', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    setState(() => _processing = true);
+    final svc = context.read<FirebaseService>();
+    final auth = context.read<AuthProvider>();
+    await svc.submitCancelRequest(
+      originalRequest: widget.request,
+      requestedByName: auth.currentMember?.name ?? '',
+    );
+    if (mounted) {
+      setState(() => _processing = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('승인 취소 요청을 보냈어요! 다른 가족의 승인이 필요해요.')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final req = widget.request;
     final isReset = req.type == RequestType.resetScore;
+    final isCancel = req.type == RequestType.cancelRequest;
+    final isWinner = req.type == RequestType.declareWinner;
     final dateStr = DateFormat('M/d HH:mm').format(req.createdAt);
 
     Color statusColor = Colors.orange;
@@ -173,6 +209,9 @@ class _RequestCardState extends State<_RequestCard> {
     } else if (req.status == RequestStatus.rejected) {
       statusColor = Colors.red;
       statusText = '거절됨';
+    } else if (req.status == RequestStatus.cancelled) {
+      statusColor = Colors.grey;
+      statusText = '취소됨';
     }
 
     return Card(
@@ -190,21 +229,33 @@ class _RequestCardState extends State<_RequestCard> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: isReset || req.ruleCategory == 'caution'
-                        ? Colors.red.shade50
-                        : const Color(0xFFFFE0B2),
+                    color: isWinner
+                        ? Colors.amber.shade50
+                        : isCancel
+                            ? Colors.grey.shade100
+                            : isReset || req.ruleCategory == 'caution'
+                                ? Colors.red.shade50
+                                : const Color(0xFFFFE0B2),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
-                    isReset
-                        ? '🔄 초기화 요청'
-                        : req.ruleCategory == 'caution'
-                            ? '⚠️ 주의 신고'
-                            : '✅ 실천 요청',
+                    isWinner
+                        ? '🏆 우승자 선정'
+                        : isCancel
+                            ? '↩️ 승인 취소 요청'
+                            : isReset
+                                ? '🔄 초기화 요청'
+                                : req.ruleCategory == 'caution'
+                                    ? '⚠️ 주의 신고'
+                                    : '✅ 실천 요청',
                     style: TextStyle(
-                      color: isReset || req.ruleCategory == 'caution'
-                          ? Colors.red
-                          : const Color(0xFFE65100),
+                      color: isWinner
+                          ? Colors.amber.shade800
+                          : isCancel
+                              ? Colors.grey.shade700
+                              : isReset || req.ruleCategory == 'caution'
+                                  ? Colors.red
+                                  : const Color(0xFFE65100),
                       fontWeight: FontWeight.bold,
                       fontSize: 12,
                     ),
@@ -229,26 +280,34 @@ class _RequestCardState extends State<_RequestCard> {
             ),
             const SizedBox(height: 10),
             Text(
-              isReset
-                  ? '${req.requestedByName}이(가) 점수 초기화를 요청했어요'
-                  : req.ruleCategory == 'caution'
-                      ? '"${req.ruleTitle}" 위반 신고'
-                      : '"${req.ruleTitle}" 실천 완료',
+              isWinner
+                  ? '${req.targetNamesText}을(를) 우승자로 선정!'
+                  : isCancel
+                      ? '"${req.ruleTitle}" 승인 취소 요청'
+                      : isReset
+                          ? '${req.requestedByName}이(가) 점수 초기화를 요청했어요'
+                          : req.ruleCategory == 'caution'
+                              ? '"${req.ruleTitle}" 위반 신고'
+                              : '"${req.ruleTitle}" 실천 완료',
               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
             ),
             const SizedBox(height: 4),
             Text(
-              isReset
-                  ? '요청자: ${req.requestedByName} · $dateStr'
-                  : req.ruleCategory == 'caution'
-                      ? '${req.requestedByName} 신고 · 위반: ${req.targetNamesText} · $dateStr'
-                      : '${req.requestedByName} 요청 · 대상: ${req.targetNamesText} · +${req.points}점 · $dateStr',
+              isWinner
+                  ? '${req.requestedByName} 요청 · ${req.winnerComment ?? ''} · $dateStr'
+                  : isCancel
+                      ? '${req.requestedByName} 요청 · 대상: ${req.targetNamesText} · $dateStr'
+                      : isReset
+                          ? '요청자: ${req.requestedByName} · $dateStr'
+                          : req.ruleCategory == 'caution'
+                              ? '${req.requestedByName} 신고 · 위반: ${req.targetNamesText} · $dateStr'
+                              : '${req.requestedByName} 요청 · 대상: ${req.targetNamesText} · +${req.points}점 · $dateStr',
               style: const TextStyle(color: Colors.grey, fontSize: 13),
             ),
             if (req.approvedBy != null) ...[
               const SizedBox(height: 4),
               Text(
-                '${req.status == RequestStatus.approved ? '승인' : '거절'}: ${req.approvedBy}',
+                '${req.status == RequestStatus.approved ? '승인' : req.status == RequestStatus.rejected ? '거절' : '처리'}: ${req.approvedBy}',
                 style: TextStyle(
                     color: statusColor, fontSize: 12),
               ),
@@ -292,6 +351,32 @@ class _RequestCardState extends State<_RequestCard> {
                     ),
                   ),
                 ],
+              ),
+            ],
+
+            // Cancel button for approved score requests only
+            if (widget.showStatus &&
+                req.status == RequestStatus.approved &&
+                req.type == RequestType.scoreAdd) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _processing ? null : _cancel,
+                  icon: _processing
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.undo, size: 16),
+                  label: const Text('승인 취소'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.grey.shade700,
+                    side: BorderSide(color: Colors.grey.shade400),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
               ),
             ],
 

@@ -1,6 +1,6 @@
 // lib/models/score_request.dart
-enum RequestType { scoreAdd, resetScore }
-enum RequestStatus { pending, approved, rejected }
+enum RequestType { scoreAdd, resetScore, cancelRequest, declareWinner }
+enum RequestStatus { pending, approved, rejected, cancelled }
 
 class ScoreRequest {
   final String id;
@@ -18,6 +18,8 @@ class ScoreRequest {
   final String? ruleCategory;
   final List<String> targetUserIds;
   final List<String> targetUserNames;
+  final String? originalRequestId;
+  final String? winnerComment;
 
   ScoreRequest({
     required this.id,
@@ -35,6 +37,8 @@ class ScoreRequest {
     this.ruleCategory,
     this.targetUserIds = const [],
     this.targetUserNames = const [],
+    this.originalRequestId,
+    this.winnerComment,
   });
 
   String get targetNamesText {
@@ -65,6 +69,8 @@ class ScoreRequest {
       ruleCategory: map['ruleCategory'],
       targetUserIds: List<String>.from(map['targetUserIds'] ?? []),
       targetUserNames: List<String>.from(map['targetUserNames'] ?? []),
+      originalRequestId: map['originalRequestId'],
+      winnerComment: map['winnerComment'],
     );
   }
 
@@ -84,6 +90,8 @@ class ScoreRequest {
       'ruleCategory': ruleCategory,
       'targetUserIds': targetUserIds,
       'targetUserNames': targetUserNames,
+      'originalRequestId': originalRequestId,
+      'winnerComment': winnerComment,
     };
   }
 }

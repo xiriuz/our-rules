@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../models/rule.dart';
 import '../models/score_request.dart';
 import '../models/family_member.dart';
+import '../models/winner.dart';
 
 class FirebaseService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -35,7 +36,6 @@ class FirebaseService {
     return FamilyMember.fromMap(doc.data()!, doc.id);
   }
 
-
   // ── Rules ─────────────────────────────────────────────
   Stream<List<Rule>> getRules() {
     return _db
@@ -57,7 +57,6 @@ class FirebaseService {
   Future<void> deleteRule(String ruleId) async {
     await _db.collection('rules').doc(ruleId).update({'isActive': false});
   }
-
 
   // ── Score Requests ────────────────────────────────────
   Stream<List<ScoreRequest>> getPendingRequests() {
@@ -178,6 +177,60 @@ class FirebaseService {
       return;
     }
 
+    if (request.type == RequestType.cancelRequest) {
+      final origId = request.originalRequestId;
+      if (origId != null) {
+        final origDoc = await _db.collection('requests').doc(origId).get();
+        if (origDoc.exists) {
+          final orig = ScoreRequest.fromMap(origDoc.data()!, origDoc.id);
+          batch.update(origDoc.reference, {
+            'status': RequestStatus.cancelled.name,
+          });
+          if (orig.ruleCategory == 'practice') {
+            for (final uid in orig.targetUserIds) {
+              batch.update(_db.collection('members').doc(uid), {
+                'totalScore': FieldValue.increment(-(orig.points ?? 0)),
+              });
+            }
+          } else if (orig.ruleCategory == 'caution') {
+            final membersSnap = await _db.collection('members').get();
+            final violatorSet = orig.targetUserIds.toSet();
+            for (final doc in membersSnap.docs) {
+              if (!violatorSet.contains(doc.id)) {
+                batch.update(doc.reference, {
+                  'totalScore': FieldValue.increment(-(orig.points ?? 0)),
+                });
+              }
+            }
+          }
+        }
+      }
+      await batch.commit();
+      return;
+    }
+
+    if (request.type == RequestType.declareWinner) {
+      final membersSnap = await _db.collection('members').get();
+      final allScores = <String, int>{};
+      for (final doc in membersSnap.docs) {
+        final name = doc.data()['name'] ?? doc.id;
+        allScores[name] = doc.data()['totalScore'] ?? 0;
+        batch.update(doc.reference, {'totalScore': 0});
+      }
+      final winnerRef = _db.collection('winners').doc();
+      batch.set(winnerRef, {
+        'winnerUid': request.targetUserId,
+        'winnerName': request.targetNamesText,
+        'winnerScore': allScores[request.targetNamesText] ?? 0,
+        'comment': request.winnerComment ?? '',
+        'declaredByName': request.requestedByName,
+        'createdAt': FieldValue.serverTimestamp(),
+        'allScores': allScores,
+      });
+      await batch.commit();
+      return;
+    }
+
     if (request.ruleCategory == 'practice') {
       for (final uid in request.targetUserIds) {
         final memberRef = _db.collection('members').doc(uid);
@@ -205,6 +258,65 @@ class FirebaseService {
       'status': RequestStatus.rejected.name,
       'approvedBy': approverName,
       'approvedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> submitCancelRequest({
+    required ScoreRequest originalRequest,
+    required String requestedByName,
+  }) async {
+    final uid = currentUser!.uid;
+    await _db.collection('requests').add({
+      'requestedBy': uid,
+      'requestedByName': requestedByName,
+      'ruleId': originalRequest.ruleId,
+      'ruleTitle': originalRequest.ruleTitle,
+      'points': originalRequest.points,
+      'type': RequestType.cancelRequest.name,
+      'status': RequestStatus.pending.name,
+      'createdAt': FieldValue.serverTimestamp(),
+      'approvedBy': null,
+      'approvedAt': null,
+      'ruleCategory': originalRequest.ruleCategory,
+      'targetUserIds': originalRequest.targetUserIds,
+      'targetUserNames': originalRequest.targetUserNames,
+      'originalRequestId': originalRequest.id,
+    });
+  }
+
+  Future<void> submitWinnerRequest({
+    required String requestedByName,
+    required String winnerUid,
+    required String winnerName,
+    required String comment,
+  }) async {
+    final uid = currentUser!.uid;
+    await _db.collection('requests').add({
+      'requestedBy': uid,
+      'requestedByName': requestedByName,
+      'ruleId': null,
+      'ruleTitle': null,
+      'points': null,
+      'type': RequestType.declareWinner.name,
+      'status': RequestStatus.pending.name,
+      'createdAt': FieldValue.serverTimestamp(),
+      'approvedBy': null,
+      'approvedAt': null,
+      'targetUserId': winnerUid,
+      'targetUserIds': [winnerUid],
+      'targetUserNames': [winnerName],
+      'winnerComment': comment,
+    });
+  }
+
+  // ── Winners ──────────────────────────────────────────
+  Stream<List<Winner>> getWinners() {
+    return _db.collection('winners').snapshots().map((snap) {
+      final list = snap.docs
+          .map((d) => Winner.fromMap(d.data(), d.id))
+          .toList();
+      list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return list;
     });
   }
 }
