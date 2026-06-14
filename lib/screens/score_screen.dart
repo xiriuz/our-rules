@@ -4,9 +4,24 @@ import 'package:provider/provider.dart';
 import '../services/firebase_service.dart';
 import '../providers/auth_provider.dart';
 import '../models/rule.dart';
+import '../models/family_member.dart';
 
-class ScoreScreen extends StatelessWidget {
+class ScoreScreen extends StatefulWidget {
   const ScoreScreen({super.key});
+
+  @override
+  State<ScoreScreen> createState() => _ScoreScreenState();
+}
+
+class _ScoreScreenState extends State<ScoreScreen>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabs;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabs = TabController(length: 2, vsync: this);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -18,7 +33,6 @@ class ScoreScreen extends StatelessWidget {
       backgroundColor: const Color(0xFFFFF8F0),
       body: Column(
         children: [
-          // Current score banner
           Container(
             margin: const EdgeInsets.all(16),
             padding: const EdgeInsets.all(20),
@@ -52,14 +66,12 @@ class ScoreScreen extends StatelessWidget {
             ),
           ),
 
-          // Rules list to request score
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(
               children: [
-                const Text('규칙 완료 요청',
-                    style:
-                        TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                const Text('점수 요청',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                 const Spacer(),
                 if (auth.isParent)
                   TextButton.icon(
@@ -71,7 +83,17 @@ class ScoreScreen extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 8),
+
+          TabBar(
+            controller: _tabs,
+            labelColor: const Color(0xFFFF7043),
+            unselectedLabelColor: Colors.grey,
+            indicatorColor: const Color(0xFFFF7043),
+            tabs: const [
+              Tab(text: '✅ 실천 완료'),
+              Tab(text: '⚠️ 주의 신고'),
+            ],
+          ),
 
           Expanded(
             child: StreamBuilder<List<Rule>>(
@@ -81,14 +103,15 @@ class ScoreScreen extends StatelessWidget {
                   return const Center(child: CircularProgressIndicator());
                 }
                 final rules = snap.data ?? [];
-                if (rules.isEmpty) {
-                  return const Center(
-                      child: Text('등록된 규칙이 없어요', style: TextStyle(color: Colors.grey)));
-                }
-                return ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: rules.length,
-                  itemBuilder: (_, i) => _RuleRequestCard(rule: rules[i]),
+                final practiceRules = rules.where((r) => r.isPractice).toList();
+                final cautionRules = rules.where((r) => r.isCaution).toList();
+
+                return TabBarView(
+                  controller: _tabs,
+                  children: [
+                    _PracticeList(rules: practiceRules),
+                    _CautionList(rules: cautionRules),
+                  ],
                 );
               },
             ),
@@ -102,7 +125,6 @@ class ScoreScreen extends StatelessWidget {
     final svc = context.read<FirebaseService>();
     final auth = context.read<AuthProvider>();
 
-    // Get family members to select target
     showDialog(
       context: context,
       builder: (_) => StreamBuilder(
@@ -148,15 +170,33 @@ class ScoreScreen extends StatelessWidget {
   }
 }
 
-class _RuleRequestCard extends StatefulWidget {
-  final Rule rule;
-  const _RuleRequestCard({required this.rule});
+class _PracticeList extends StatelessWidget {
+  final List<Rule> rules;
+  const _PracticeList({required this.rules});
 
   @override
-  State<_RuleRequestCard> createState() => _RuleRequestCardState();
+  Widget build(BuildContext context) {
+    if (rules.isEmpty) {
+      return const Center(
+          child: Text('실천 규칙이 없어요', style: TextStyle(color: Colors.grey)));
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      itemCount: rules.length,
+      itemBuilder: (_, i) => _PracticeRequestCard(rule: rules[i]),
+    );
+  }
 }
 
-class _RuleRequestCardState extends State<_RuleRequestCard> {
+class _PracticeRequestCard extends StatefulWidget {
+  final Rule rule;
+  const _PracticeRequestCard({required this.rule});
+
+  @override
+  State<_PracticeRequestCard> createState() => _PracticeRequestCardState();
+}
+
+class _PracticeRequestCardState extends State<_PracticeRequestCard> {
   bool _submitting = false;
 
   Future<void> _submit() async {
@@ -168,12 +208,13 @@ class _RuleRequestCardState extends State<_RuleRequestCard> {
       ruleTitle: widget.rule.title,
       points: widget.rule.points,
       requestedByName: auth.currentMember!.name,
+      ruleCategory: 'practice',
     );
     if (mounted) {
       setState(() => _submitting = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('"${widget.rule.title}" 완료 요청을 보냈어요!'),
+          content: Text('"${widget.rule.title}" 실천 요청을 보냈어요!'),
           backgroundColor: const Color(0xFFFF7043),
         ),
       );
@@ -210,9 +251,9 @@ class _RuleRequestCardState extends State<_RuleRequestCard> {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
-                      '+${widget.rule.points}점',
+                      '내 점수 +${widget.rule.points}점',
                       style: const TextStyle(
-                          color: Color(0xFFE65100), fontWeight: FontWeight.bold),
+                          color: Color(0xFFE65100), fontWeight: FontWeight.bold, fontSize: 12),
                     ),
                   ),
                 ],
@@ -229,14 +270,146 @@ class _RuleRequestCardState extends State<_RuleRequestCard> {
               ),
               child: _submitting
                   ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                          color: Colors.white, strokeWidth: 2))
+                      width: 20, height: 20,
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                   : const Text('완료!'),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _CautionList extends StatelessWidget {
+  final List<Rule> rules;
+  const _CautionList({required this.rules});
+
+  @override
+  Widget build(BuildContext context) {
+    if (rules.isEmpty) {
+      return const Center(
+          child: Text('주의 규칙이 없어요', style: TextStyle(color: Colors.grey)));
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      itemCount: rules.length,
+      itemBuilder: (_, i) => _CautionRequestCard(rule: rules[i]),
+    );
+  }
+}
+
+class _CautionRequestCard extends StatelessWidget {
+  final Rule rule;
+  const _CautionRequestCard({required this.rule});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(rule.title,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 16)),
+                  if (rule.description.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(rule.description,
+                        style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                  ],
+                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      '위반 시 다른 구성원 +${rule.points}점',
+                      style: TextStyle(
+                          color: Colors.red.shade700, fontWeight: FontWeight.bold, fontSize: 12),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            ElevatedButton(
+              onPressed: () => _showReportDialog(context),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+              ),
+              child: const Text('신고'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showReportDialog(BuildContext context) {
+    final svc = context.read<FirebaseService>();
+    final auth = context.read<AuthProvider>();
+
+    showDialog(
+      context: context,
+      builder: (_) => StreamBuilder<List<FamilyMember>>(
+        stream: svc.getFamilyMembers(),
+        builder: (ctx, snap) {
+          final members = (snap.data ?? [])
+              .where((m) => m.uid != auth.currentMember!.uid)
+              .toList();
+          return AlertDialog(
+            title: Text('"${rule.title}" 위반 신고'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('누가 위반했나요?'),
+                const SizedBox(height: 12),
+                ...members.map((m) => ListTile(
+                      leading: const Icon(Icons.person),
+                      title: Text(m.name),
+                      onTap: () async {
+                        Navigator.pop(ctx);
+                        await svc.submitCautionReport(
+                          ruleId: rule.id,
+                          ruleTitle: rule.title,
+                          points: rule.points,
+                          requestedByName: auth.currentMember!.name,
+                          violatorId: m.uid,
+                          violatorName: m.name,
+                        );
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('${m.name}의 "${rule.title}" 위반 신고를 보냈어요!'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      },
+                    )),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('취소'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

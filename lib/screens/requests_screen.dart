@@ -190,15 +190,21 @@ class _RequestCardState extends State<_RequestCard> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: isReset
+                    color: isReset || req.ruleCategory == 'caution'
                         ? Colors.red.shade50
                         : const Color(0xFFFFE0B2),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
-                    isReset ? '🔄 초기화 요청' : '⭐ 점수 요청',
+                    isReset
+                        ? '🔄 초기화 요청'
+                        : req.ruleCategory == 'caution'
+                            ? '⚠️ 주의 신고'
+                            : '✅ 실천 요청',
                     style: TextStyle(
-                      color: isReset ? Colors.red : const Color(0xFFE65100),
+                      color: isReset || req.ruleCategory == 'caution'
+                          ? Colors.red
+                          : const Color(0xFFE65100),
                       fontWeight: FontWeight.bold,
                       fontSize: 12,
                     ),
@@ -225,14 +231,18 @@ class _RequestCardState extends State<_RequestCard> {
             Text(
               isReset
                   ? '${req.requestedByName}이(가) 점수 초기화를 요청했어요'
-                  : '"${req.ruleTitle}" 완료',
+                  : req.ruleCategory == 'caution'
+                      ? '"${req.ruleTitle}" 위반 신고'
+                      : '"${req.ruleTitle}" 실천 완료',
               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
             ),
             const SizedBox(height: 4),
             Text(
               isReset
                   ? '요청자: ${req.requestedByName} · $dateStr'
-                  : '${req.requestedByName} · +${req.points}점 · $dateStr',
+                  : req.ruleCategory == 'caution'
+                      ? '${req.requestedByName} 신고 · 승인 시 다른 구성원 +${req.points}점 · $dateStr'
+                      : '${req.requestedByName} · +${req.points}점 · $dateStr',
               style: const TextStyle(color: Colors.grey, fontSize: 13),
             ),
             if (req.approvedBy != null) ...[

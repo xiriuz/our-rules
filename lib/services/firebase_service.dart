@@ -104,6 +104,7 @@ class FirebaseService {
     required String ruleTitle,
     required int points,
     required String requestedByName,
+    String ruleCategory = 'practice',
   }) async {
     final uid = currentUser!.uid;
     await _db.collection('requests').add({
@@ -118,6 +119,33 @@ class FirebaseService {
       'approvedBy': null,
       'approvedAt': null,
       'targetUserId': uid,
+      'ruleCategory': ruleCategory,
+    });
+  }
+
+  Future<void> submitCautionReport({
+    required String ruleId,
+    required String ruleTitle,
+    required int points,
+    required String requestedByName,
+    required String violatorId,
+    required String violatorName,
+  }) async {
+    final uid = currentUser!.uid;
+    await _db.collection('requests').add({
+      'requestedBy': uid,
+      'requestedByName': requestedByName,
+      'ruleId': ruleId,
+      'ruleTitle': ruleTitle,
+      'points': points,
+      'type': RequestType.scoreAdd.name,
+      'status': RequestStatus.pending.name,
+      'createdAt': FieldValue.serverTimestamp(),
+      'approvedBy': null,
+      'approvedAt': null,
+      'targetUserId': violatorId,
+      'targetUserName': violatorName,
+      'ruleCategory': 'caution',
     });
   }
 
@@ -144,31 +172,53 @@ class FirebaseService {
   }
 
   Future<void> approveRequest(ScoreRequest request, String approverName) async {
-    final batch = _db.batch();
+    if (request.type == RequestType.scoreAdd &&
+        request.ruleCategory == 'caution') {
+      // Caution rule: give points to all members EXCEPT the violator
+      final membersSnap = await _db.collection('members').get();
+      final violatorId = request.targetUserId ?? request.requestedBy;
+      final batch = _db.batch();
 
-    // Update request status
-    final reqRef = _db.collection('requests').doc(request.id);
-    batch.update(reqRef, {
-      'status': RequestStatus.approved.name,
-      'approvedBy': approverName,
-      'approvedAt': FieldValue.serverTimestamp(),
-    });
-
-    if (request.type == RequestType.scoreAdd) {
-      // Add points to user
-      final memberRef =
-          _db.collection('members').doc(request.targetUserId ?? request.requestedBy);
-      batch.update(memberRef, {
-        'totalScore': FieldValue.increment(request.points ?? 0),
+      final reqRef = _db.collection('requests').doc(request.id);
+      batch.update(reqRef, {
+        'status': RequestStatus.approved.name,
+        'approvedBy': approverName,
+        'approvedAt': FieldValue.serverTimestamp(),
       });
-    } else if (request.type == RequestType.resetScore) {
-      // Reset target user score
-      final memberRef =
-          _db.collection('members').doc(request.targetUserId);
-      batch.update(memberRef, {'totalScore': 0});
-    }
 
-    await batch.commit();
+      for (final doc in membersSnap.docs) {
+        if (doc.id != violatorId) {
+          batch.update(doc.reference, {
+            'totalScore': FieldValue.increment(request.points ?? 0),
+          });
+        }
+      }
+
+      await batch.commit();
+    } else {
+      final batch = _db.batch();
+
+      final reqRef = _db.collection('requests').doc(request.id);
+      batch.update(reqRef, {
+        'status': RequestStatus.approved.name,
+        'approvedBy': approverName,
+        'approvedAt': FieldValue.serverTimestamp(),
+      });
+
+      if (request.type == RequestType.scoreAdd) {
+        final memberRef =
+            _db.collection('members').doc(request.targetUserId ?? request.requestedBy);
+        batch.update(memberRef, {
+          'totalScore': FieldValue.increment(request.points ?? 0),
+        });
+      } else if (request.type == RequestType.resetScore) {
+        final memberRef =
+            _db.collection('members').doc(request.targetUserId);
+        batch.update(memberRef, {'totalScore': 0});
+      }
+
+      await batch.commit();
+    }
   }
 
   Future<void> rejectRequest(ScoreRequest request, String approverName) async {

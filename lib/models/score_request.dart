@@ -15,6 +15,7 @@ class ScoreRequest {
   final String? approvedBy;
   final DateTime? approvedAt;
   final String? targetUserId; // for reset: who to reset
+  final String? ruleCategory; // 'practice' or 'caution'
 
   ScoreRequest({
     required this.id,
@@ -29,6 +30,7 @@ class ScoreRequest {
     this.approvedBy,
     this.approvedAt,
     this.targetUserId,
+    this.ruleCategory,
   });
 
   factory ScoreRequest.fromMap(Map<String, dynamic> map, String id) {
@@ -51,6 +53,7 @@ class ScoreRequest {
       approvedBy: map['approvedBy'],
       approvedAt: (map['approvedAt'] as dynamic)?.toDate(),
       targetUserId: map['targetUserId'],
+      ruleCategory: map['ruleCategory'],
     );
   }
 
@@ -67,6 +70,7 @@ class ScoreRequest {
       'approvedBy': approvedBy,
       'approvedAt': approvedAt,
       'targetUserId': targetUserId,
+      'ruleCategory': ruleCategory,
     };
   }
 }
