@@ -50,10 +50,13 @@ class FirebaseService {
     return _db
         .collection('rules')
         .where('isActive', isEqualTo: true)
-        .orderBy('createdAt', descending: true)
         .snapshots()
-        .map((snap) =>
-            snap.docs.map((d) => Rule.fromMap(d.data(), d.id)).toList());
+        .map((snap) {
+      final list =
+          snap.docs.map((d) => Rule.fromMap(d.data(), d.id)).toList();
+      list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return list;
+    });
   }
 
   Future<void> addRule(Rule rule) async {
@@ -73,22 +76,27 @@ class FirebaseService {
     return _db
         .collection('requests')
         .where('status', isEqualTo: 'pending')
-        .orderBy('createdAt', descending: true)
         .snapshots()
-        .map((snap) => snap.docs
-            .map((d) => ScoreRequest.fromMap(d.data(), d.id))
-            .toList());
+        .map((snap) {
+      final list = snap.docs
+          .map((d) => ScoreRequest.fromMap(d.data(), d.id))
+          .toList();
+      list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return list;
+    });
   }
 
   Stream<List<ScoreRequest>> getAllRequests() {
     return _db
         .collection('requests')
-        .orderBy('createdAt', descending: true)
-        .limit(50)
         .snapshots()
-        .map((snap) => snap.docs
-            .map((d) => ScoreRequest.fromMap(d.data(), d.id))
-            .toList());
+        .map((snap) {
+      final list = snap.docs
+          .map((d) => ScoreRequest.fromMap(d.data(), d.id))
+          .toList();
+      list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return list.take(50).toList();
+    });
   }
 
   Future<void> submitScoreRequest({
