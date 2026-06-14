@@ -143,7 +143,7 @@ class _AddRuleSheet extends StatefulWidget {
 class _AddRuleSheetState extends State<_AddRuleSheet> {
   final _titleCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
-  int _points = 10;
+  int _points = 1;
   bool _saving = false;
 
   Future<void> _save() async {
@@ -196,8 +196,8 @@ class _AddRuleSheetState extends State<_AddRuleSheet> {
               Expanded(
                 child: Slider(
                   value: _points.toDouble(),
-                  min: 5,
-                  max: 100,
+                  min: 1,
+                  max: 20,
                   divisions: 19,
                   label: '+$_points점',
                   activeColor: const Color(0xFFFF7043),
