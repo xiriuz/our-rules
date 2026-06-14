@@ -1,13 +1,15 @@
 # Flutter
 .dart_tool/
 .packages
+.flutter-plugins
+.flutter-plugins-dependencies
 build/
 *.iml
 *.lock
+android/app/src/main/java/io/flutter/plugins/
 
 # Firebase
 serviceAccountKey.json
-lib/firebase_options.dart
 
 # Android
 android/.gradle/

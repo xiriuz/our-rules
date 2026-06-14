@@ -35,15 +35,6 @@ class FirebaseService {
     return FamilyMember.fromMap(doc.data()!, doc.id);
   }
 
-  Future<void> updateMemberScore(String uid, int delta) async {
-    await _db.collection('members').doc(uid).update({
-      'totalScore': FieldValue.increment(delta),
-    });
-  }
-
-  Future<void> resetMemberScore(String uid) async {
-    await _db.collection('members').doc(uid).update({'totalScore': 0});
-  }
 
   // ── Rules ─────────────────────────────────────────────
   Stream<List<Rule>> getRules() {
@@ -67,9 +58,6 @@ class FirebaseService {
     await _db.collection('rules').doc(ruleId).update({'isActive': false});
   }
 
-  Future<void> updateRule(String ruleId, Rule rule) async {
-    await _db.collection('rules').doc(ruleId).update(rule.toMap());
-  }
 
   // ── Score Requests ────────────────────────────────────
   Stream<List<ScoreRequest>> getPendingRequests() {
