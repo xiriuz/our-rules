@@ -25,7 +25,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final ok = await auth.signIn(_emailCtrl.text.trim(), _passCtrl.text.trim());
     if (!ok && mounted) {
       setState(() {
-        _error = '이메일 또는 비밀번호가 올바르지 않아요';
+        _error = auth.lastError ?? '이메일 또는 비밀번호가 올바르지 않아요';
         _loading = false;
       });
     }
