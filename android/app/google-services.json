@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "458692424929",
+    "project_id": "our-rules-fffeb",
+    "storage_bucket": "our-rules-fffeb.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:458692424929:android:72afbb45ba3a15fe9df3a0",
+        "android_client_info": {
+          "package_name": "com.family.rules_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBXPxtSAAXrhL9zpm3LaBrdz3SymIDYgQg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
