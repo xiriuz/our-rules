@@ -241,8 +241,8 @@ class _RequestCardState extends State<_RequestCard> {
               isReset
                   ? '요청자: ${req.requestedByName} · $dateStr'
                   : req.ruleCategory == 'caution'
-                      ? '${req.requestedByName} 신고 · 승인 시 다른 구성원 +${req.points}점 · $dateStr'
-                      : '${req.requestedByName} · +${req.points}점 · $dateStr',
+                      ? '위반: ${req.targetNamesText} · 다른 구성원 +${req.points}점 · $dateStr'
+                      : '대상: ${req.targetNamesText} · +${req.points}점 · $dateStr',
               style: const TextStyle(color: Colors.grey, fontSize: 13),
             ),
             if (req.approvedBy != null) ...[

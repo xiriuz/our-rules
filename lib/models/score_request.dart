@@ -14,8 +14,10 @@ class ScoreRequest {
   final DateTime createdAt;
   final String? approvedBy;
   final DateTime? approvedAt;
-  final String? targetUserId; // for reset: who to reset
-  final String? ruleCategory; // 'practice' or 'caution'
+  final String? targetUserId;
+  final String? ruleCategory;
+  final List<String> targetUserIds;
+  final List<String> targetUserNames;
 
   ScoreRequest({
     required this.id,
@@ -31,7 +33,14 @@ class ScoreRequest {
     this.approvedAt,
     this.targetUserId,
     this.ruleCategory,
+    this.targetUserIds = const [],
+    this.targetUserNames = const [],
   });
+
+  String get targetNamesText {
+    if (targetUserNames.isNotEmpty) return targetUserNames.join(', ');
+    return requestedByName;
+  }
 
   factory ScoreRequest.fromMap(Map<String, dynamic> map, String id) {
     return ScoreRequest(
@@ -54,6 +63,8 @@ class ScoreRequest {
       approvedAt: (map['approvedAt'] as dynamic)?.toDate(),
       targetUserId: map['targetUserId'],
       ruleCategory: map['ruleCategory'],
+      targetUserIds: List<String>.from(map['targetUserIds'] ?? []),
+      targetUserNames: List<String>.from(map['targetUserNames'] ?? []),
     );
   }
 
@@ -71,6 +82,8 @@ class ScoreRequest {
       'approvedAt': approvedAt,
       'targetUserId': targetUserId,
       'ruleCategory': ruleCategory,
+      'targetUserIds': targetUserIds,
+      'targetUserNames': targetUserNames,
     };
   }
 }
