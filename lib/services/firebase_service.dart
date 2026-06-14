@@ -161,96 +161,117 @@ class FirebaseService {
   }
 
   Future<void> approveRequest(ScoreRequest request, String approverName) async {
-    final batch = _db.batch();
-
     final reqRef = _db.collection('requests').doc(request.id);
-    batch.update(reqRef, {
-      'status': RequestStatus.approved.name,
-      'approvedBy': approverName,
-      'approvedAt': FieldValue.serverTimestamp(),
-    });
 
-    if (request.type == RequestType.resetScore) {
-      final memberRef = _db.collection('members').doc(request.targetUserId);
-      batch.update(memberRef, {'totalScore': 0});
-      await batch.commit();
-      return;
+    // 우승 선정·승인 취소·주의 신고는 전체 구성원을 다뤄야 하므로
+    // 트랜잭션에 들어가기 전에 멤버 문서 참조를 미리 확보한다.
+    // (클라이언트 트랜잭션 안에서는 컬렉션 쿼리를 실행할 수 없다.)
+    final touchesAllMembers = request.type == RequestType.declareWinner ||
+        request.type == RequestType.cancelRequest ||
+        (request.type == RequestType.scoreAdd &&
+            request.ruleCategory == 'caution');
+    List<DocumentReference<Map<String, dynamic>>> memberRefs = [];
+    if (touchesAllMembers) {
+      final snap = await _db.collection('members').get();
+      memberRefs = snap.docs.map((d) => d.reference).toList();
     }
 
-    if (request.type == RequestType.cancelRequest) {
-      final origId = request.originalRequestId;
-      if (origId != null) {
-        final origDoc = await _db.collection('requests').doc(origId).get();
-        if (origDoc.exists) {
-          final orig = ScoreRequest.fromMap(origDoc.data()!, origDoc.id);
-          batch.update(origDoc.reference, {
-            'status': RequestStatus.cancelled.name,
-          });
-          if (orig.ruleCategory == 'practice') {
-            for (final uid in orig.targetUserIds) {
-              batch.update(_db.collection('members').doc(uid), {
-                'totalScore': FieldValue.increment(-(orig.points ?? 0)),
-              });
-            }
-          } else if (orig.ruleCategory == 'caution') {
-            final membersSnap = await _db.collection('members').get();
-            final violatorSet = orig.targetUserIds.toSet();
-            for (final doc in membersSnap.docs) {
-              if (!violatorSet.contains(doc.id)) {
-                batch.update(doc.reference, {
-                  'totalScore': FieldValue.increment(-(orig.points ?? 0)),
-                });
-              }
+    await _db.runTransaction((tx) async {
+      final reqSnap = await tx.get(reqRef);
+      if (!reqSnap.exists) return;
+      // 이미 처리된 요청(중복 탭·동시 승인)이면 점수를 다시 적용하지 않는다.
+      if (reqSnap.data()!['status'] != RequestStatus.pending.name) return;
+
+      // ── 읽기 단계 (모든 tx.get 은 쓰기보다 먼저) ──
+      // 우승 선정: 전원 점수 스냅샷을 위해 멤버 문서를 읽는다.
+      final winnerScores = <String, int>{};
+      if (request.type == RequestType.declareWinner) {
+        for (final ref in memberRefs) {
+          final m = await tx.get(ref);
+          final name = (m.data()?['name'] ?? ref.id) as String;
+          winnerScores[name] = (m.data()?['totalScore'] ?? 0) as int;
+        }
+      }
+
+      // 승인 취소: 원본 요청 상태를 확인한다.
+      DocumentSnapshot<Map<String, dynamic>>? origSnap;
+      if (request.type == RequestType.cancelRequest &&
+          request.originalRequestId != null) {
+        origSnap = await tx
+            .get(_db.collection('requests').doc(request.originalRequestId!));
+      }
+
+      // ── 쓰기 단계 ──
+      tx.update(reqRef, {
+        'status': RequestStatus.approved.name,
+        'approvedBy': approverName,
+        'approvedAt': FieldValue.serverTimestamp(),
+      });
+
+      if (request.type == RequestType.resetScore) {
+        tx.update(
+            _db.collection('members').doc(request.targetUserId),
+            {'totalScore': 0});
+        return;
+      }
+
+      if (request.type == RequestType.cancelRequest) {
+        if (origSnap == null || !origSnap.exists) return;
+        final orig = ScoreRequest.fromMap(origSnap.data()!, origSnap.id);
+        // 원본이 이미 취소·거절된 상태면 점수를 다시 되돌리지 않는다.
+        if (orig.status != RequestStatus.approved) return;
+        tx.update(origSnap.reference,
+            {'status': RequestStatus.cancelled.name});
+        final pts = orig.points ?? 0;
+        if (orig.ruleCategory == 'practice') {
+          for (final uid in orig.targetUserIds) {
+            tx.update(_db.collection('members').doc(uid),
+                {'totalScore': FieldValue.increment(-pts)});
+          }
+        } else if (orig.ruleCategory == 'caution') {
+          final violators = orig.targetUserIds.toSet();
+          for (final ref in memberRefs) {
+            if (!violators.contains(ref.id)) {
+              tx.update(ref, {'totalScore': FieldValue.increment(-pts)});
             }
           }
         }
+        return;
       }
-      await batch.commit();
-      return;
-    }
 
-    if (request.type == RequestType.declareWinner) {
-      final membersSnap = await _db.collection('members').get();
-      final allScores = <String, int>{};
-      for (final doc in membersSnap.docs) {
-        final name = doc.data()['name'] ?? doc.id;
-        allScores[name] = doc.data()['totalScore'] ?? 0;
-        batch.update(doc.reference, {'totalScore': 0});
-      }
-      final winnerRef = _db.collection('winners').doc();
-      batch.set(winnerRef, {
-        'winnerUid': request.targetUserId,
-        'winnerName': request.targetNamesText,
-        'winnerScore': allScores[request.targetNamesText] ?? 0,
-        'comment': request.winnerComment ?? '',
-        'declaredByName': request.requestedByName,
-        'createdAt': FieldValue.serverTimestamp(),
-        'allScores': allScores,
-      });
-      await batch.commit();
-      return;
-    }
-
-    if (request.ruleCategory == 'practice') {
-      for (final uid in request.targetUserIds) {
-        final memberRef = _db.collection('members').doc(uid);
-        batch.update(memberRef, {
-          'totalScore': FieldValue.increment(request.points ?? 0),
+      if (request.type == RequestType.declareWinner) {
+        for (final ref in memberRefs) {
+          tx.update(ref, {'totalScore': 0});
+        }
+        final winnerRef = _db.collection('winners').doc();
+        tx.set(winnerRef, {
+          'winnerUid': request.targetUserId,
+          'winnerName': request.targetNamesText,
+          'winnerScore': winnerScores[request.targetNamesText] ?? 0,
+          'comment': request.winnerComment ?? '',
+          'declaredByName': request.requestedByName,
+          'createdAt': FieldValue.serverTimestamp(),
+          'allScores': winnerScores,
         });
+        return;
       }
-    } else if (request.ruleCategory == 'caution') {
-      final membersSnap = await _db.collection('members').get();
-      final violatorSet = request.targetUserIds.toSet();
-      for (final doc in membersSnap.docs) {
-        if (!violatorSet.contains(doc.id)) {
-          batch.update(doc.reference, {
-            'totalScore': FieldValue.increment(request.points ?? 0),
-          });
+
+      // 기본: 점수 추가 (scoreAdd)
+      final pts = request.points ?? 0;
+      if (request.ruleCategory == 'practice') {
+        for (final uid in request.targetUserIds) {
+          tx.update(_db.collection('members').doc(uid),
+              {'totalScore': FieldValue.increment(pts)});
+        }
+      } else if (request.ruleCategory == 'caution') {
+        final violators = request.targetUserIds.toSet();
+        for (final ref in memberRefs) {
+          if (!violators.contains(ref.id)) {
+            tx.update(ref, {'totalScore': FieldValue.increment(pts)});
+          }
         }
       }
-    }
-
-    await batch.commit();
+    });
   }
 
   Future<void> rejectRequest(ScoreRequest request, String approverName) async {
