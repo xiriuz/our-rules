@@ -52,12 +52,24 @@ class _ScoreScreenState extends State<ScoreScreen>
                   children: [
                     const Text('내 점수',
                         style: TextStyle(color: Colors.white70, fontSize: 14)),
-                    Text(
-                      '${member.totalScore}점',
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 36,
-                          fontWeight: FontWeight.bold),
+                    StreamBuilder<List<FamilyMember>>(
+                      stream: svc.getFamilyMembers(),
+                      builder: (ctx, snap) {
+                        // 로그인 시 1회 로드된 캐시(currentMember) 대신
+                        // 실시간 점수를 반영한다.
+                        final matches = (snap.data ?? [])
+                            .where((m) => m.uid == member.uid);
+                        final score = matches.isNotEmpty
+                            ? matches.first.totalScore
+                            : member.totalScore;
+                        return Text(
+                          '$score점',
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 36,
+                              fontWeight: FontWeight.bold),
+                        );
+                      },
                     ),
                   ],
                 ),

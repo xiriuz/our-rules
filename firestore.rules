@@ -29,5 +29,11 @@ service cloud.firestore {
       allow update: if request.auth != null &&
         resource.data.requestedBy != request.auth.uid;
     }
+
+    // 우승 기록 - 로그인한 사용자 읽기/생성 (우승자 승인 시 생성됨)
+    match /winners/{winnerId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+    }
   }
 }
